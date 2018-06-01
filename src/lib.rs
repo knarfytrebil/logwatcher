@@ -1,19 +1,21 @@
+use std::io;
 use std::fs::File;
 use std::io::SeekFrom;
 use std::io::BufReader;
 use std::io::prelude::*;
-use std::io;
+use std::io::ErrorKind;
 use std::thread::sleep;
 use std::time::Duration;
 use std::os::unix::fs::MetadataExt;
-use std::io::ErrorKind;
+use std::sync::mpsc;
 
 pub struct LogWatcher{
     filename: String,
     inode: u64,
     pos: u64,
     reader: BufReader<File>,
-    finish: bool
+    finish: bool,
+    tx_sender: Option<mpsc::Sender<String>>
 }
 
 impl LogWatcher {
@@ -32,10 +34,16 @@ impl LogWatcher {
         let pos = metadata.len();
         reader.seek(SeekFrom::Start(pos)).unwrap();
         Ok(LogWatcher{filename: filename,
-                      inode: metadata.ino(),
-                      pos: pos,
-                      reader: reader,
-                      finish: false})
+            inode: metadata.ino(),
+            pos: pos,
+            reader: reader,
+            finish: false,
+            tx_sender: None
+        })
+    }
+
+    pub fn register_channel(&mut self, tx: mpsc::Sender<String>) {
+        self.tx_sender = Some(tx);
     }
 
     fn reopen_if_log_rotated<F: ?Sized>(&mut self, callback: &F)
@@ -86,7 +94,11 @@ impl LogWatcher {
                         self.pos += len as u64;
                         self.reader.seek(SeekFrom::Start(self.pos)).unwrap();
                         callback(line.replace("\n", ""));
-                        line.clear();
+                        match self.tx_sender {
+                            Some(ref tx) => { tx.send(line); }
+                            None => { }
+                        }
+                        // line.clear();
                     }else {
                         if self.finish{
                             break;
