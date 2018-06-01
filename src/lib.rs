@@ -88,22 +88,21 @@ impl LogWatcher {
         loop{
             let mut line = String::new();
             let resp = self.reader.read_line(&mut line);
-            match resp{
+            match resp {
                 Ok(len) => {
                     if len > 0{
                         self.pos += len as u64;
                         self.reader.seek(SeekFrom::Start(self.pos)).unwrap();
                         callback(line.replace("\n", ""));
                         match self.tx_sender {
-                            Some(ref tx) => { tx.send(line); }
+                            Some(ref tx) => { tx.send(line).unwrap(); }
                             None => { }
                         }
-                        // line.clear();
-                    }else {
+                    } else {
                         if self.finish{
                             break;
                         }
-                        else{
+                        else {
                             self.reopen_if_log_rotated(callback);
                             self.reader.seek(SeekFrom::Start(self.pos)).unwrap();
                         }
